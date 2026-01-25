@@ -1,0 +1,3 @@
+@echo off
+echo Запуск бота от имени администратора...
+powershell -Command "Start-Process cmd -Verb RunAs -ArgumentList '/k cd /d ""%CD%"" && ""C:\Users\dubko\AppData\Local\Python\pythoncore-3.14-64\python.exe"" bot_fixed.py'"

@@ -1,0 +1,21 @@
+ХОСТИНГИ ДЛЯ 24/7:
+
+1. PYTHONANYWHERE (проще всего):
+   - pythonanywhere.com → Sign up
+   - Files → Upload: bot.py, values.json
+   - Consoles → Bash: pip install aiogram aiohttp
+   - Consoles → Bash: python bot.py
+   - Keep Alive Task: в Scheduled Tasks
+
+2. RAILWAY (автоматически):
+   - railway.app → New Project
+   - Deploy from GitHub или Manual
+   - Добавьте переменные: BOT_TOKEN=ваш_токен
+
+3. ЛОКАЛЬНО С ПОМОЩЬЮ .BAT:
+   Создайте run_24_7.bat:
+   @echo off
+   :start
+   python bot.py
+   timeout /t 10
+   goto start
