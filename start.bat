@@ -9,7 +9,7 @@ echo 1. Установка библиотек...
 
 echo 2. Запуск бота...
 echo ===========================
-"C:\Users\dubko\AppData\Local\Python\bin\python.exe" bot_new.py
+"C:\Users\dubko\AppData\Local\Python\bin\python.exe" bot.py
 
 echo.
 pause
