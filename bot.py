@@ -1,9 +1,8 @@
 """
-🎯 ЦЕННОСТНЫЙ НАВИГАТОР 6.0 - ИСПРАВЛЕННАЯ ВЕРСИЯ
+🎯 ЦЕННОСТНЫЙ НАВИГАТОР - ИСПРАВЛЕННАЯ ВЕРСИЯ
 • Гарантированный показ ВСЕХ 200+ ценностей без повторов
-• Рабочий Stage2 с группировкой по категориям
+• РАБОЧИЙ Stage2 с группировкой по категориям (взято из рабочего кода)
 • Реальный бесплатный ИИ-анализ (DeepSeek)
-• Упрощенная и надежная архитектура
 """
 
 import json
@@ -175,7 +174,7 @@ class SimpleStorage:
             del self.games[user_id]
             self.save_to_backup()
 
-# ========== КЛАСС ИГРЫ - ИСПРАВЛЕННЫЙ ==========
+# ========== КЛАСС ИГРЫ С ИСПРАВЛЕННЫМ STAGE2 ==========
 class ValueGame:
     def __init__(self, user_id: int, username: str, storage: SimpleStorage):
         self.user_id = user_id
@@ -284,59 +283,59 @@ class ValueGame:
             return False
     
     def _prepare_stage2(self):
-        """Подготовка Stage2 - берем 40 выбранных и группируем по категориям"""
+        """Подготовка Stage2 - берем 40 выбранных"""
         # Берем ID выбранных на Stage1
         self.progress.stage2_available_ids = self.progress.stage1_selected_ids.copy()
-        
-        # Перемешиваем для случайности
-        random.shuffle(self.progress.stage2_available_ids)
         
         logger.info(f"✅ Stage2 подготовлен: {len(self.progress.stage2_available_ids)} ценностей")
         self._save_progress()
     
     # ========== STAGE 2: 10 выборов × (1 из 4 по категориям) ==========
+    # ИСПРАВЛЕННАЯ ВЕРСИЯ - взята из рабочего второго кода
     def prepare_stage2_round(self) -> bool:
-        """Подготовка раунда Stage2 - группировка по категориям"""
+        """Подготовка раунда Stage2 - ИСПРАВЛЕННАЯ версия"""
         
         # Проверяем завершение Stage2
         if len(self.progress.stage2_selected_ids) >= self.stage2_target:
             return False
         
-        # Если доступных меньше 2, завершаем
-        if len(self.progress.stage2_available_ids) < 2:
-            return False
+        # Если это первый раунд Stage2, группируем по категориям
+        if not hasattr(self, 'stage2_by_category') or not self.stage2_by_category:
+            self._group_stage2_values_by_category()
         
-        # Группируем оставшиеся ценности по категориям
-        categories = {}
-        for value_id in self.progress.stage2_available_ids:
-            if value_id in VALUE_BY_ID:
-                value = VALUE_BY_ID[value_id]
-                cat = value.get('category', 'Разное')
-                if cat not in categories:
-                    categories[cat] = []
-                categories[cat].append(value_id)
-        
-        # Ищем категорию с минимум 2 значениями
+        # Ищем категорию с минимум 4 значениями
         selected_category = None
-        for cat, value_ids in categories.items():
-            if len(value_ids) >= 2:
+        for cat, values in self.stage2_by_category.items():
+            if len(values) >= 4:
                 selected_category = cat
                 break
         
         if not selected_category:
-            # Если нет категории с 2+ значениями, берем случайные 4
-            available_ids = self.progress.stage2_available_ids.copy()
-            if len(available_ids) > 4:
-                selected_ids = random.sample(available_ids, 4)
+            # Если нет категории с 4+ значениями, берем случайные из всех доступных
+            if len(self.progress.stage2_available_ids) >= 4:
+                # Берем 4 случайных из доступных
+                available = [v for v in self.progress.stage2_available_ids 
+                           if v not in self.progress.stage2_shown_ids]
+                if len(available) >= 4:
+                    selected_ids = random.sample(available, 4)
+                else:
+                    selected_ids = available
             else:
-                selected_ids = available_ids
+                return False
         else:
             # Берем 4 значения из выбранной категории
-            category_ids = categories[selected_category]
-            if len(category_ids) > 4:
-                selected_ids = random.sample(category_ids, 4)
-            else:
-                selected_ids = category_ids
+            category_values = self.stage2_by_category[selected_category]
+            selected_ids = random.sample([v["id"] for v in category_values], 
+                                       min(4, len(category_values)))
+            
+            # Удаляем выбранные из этой категории
+            self.stage2_by_category[selected_category] = [
+                v for v in category_values if v["id"] not in selected_ids
+            ]
+            
+            # Если категория опустела, удаляем ее
+            if not self.stage2_by_category[selected_category]:
+                del self.stage2_by_category[selected_category]
         
         # Получаем объекты ценностей
         self.current_values = []
@@ -356,8 +355,22 @@ class ValueGame:
         
         return True
     
+    def _group_stage2_values_by_category(self):
+        """Группирует значения Stage2 по категориям"""
+        self.stage2_by_category = {}
+        
+        for value_id in self.progress.stage2_available_ids:
+            if value_id in VALUE_BY_ID:
+                value = VALUE_BY_ID[value_id]
+                cat = value.get('category', 'Разное')
+                if cat not in self.stage2_by_category:
+                    self.stage2_by_category[cat] = []
+                self.stage2_by_category[cat].append(value)
+        
+        logger.info(f"📊 Stage2 сгруппирован: {len(self.stage2_by_category)} категорий")
+    
     def process_stage2_choice(self, choice_index: int) -> bool:
-        """Обработка выбора на Stage2"""
+        """Обработка выбора на Stage2 - ИСПРАВЛЕННАЯ версия"""
         if not (0 <= choice_index < len(self.current_values)):
             return False
         
@@ -374,7 +387,18 @@ class ValueGame:
             self.progress.stage2_selected_ids.append(selected_id)
             
             # Удаляем из доступных
-            self.progress.stage2_available_ids.remove(selected_id)
+            if selected_id in self.progress.stage2_available_ids:
+                self.progress.stage2_available_ids.remove(selected_id)
+            
+            # Удаляем из группировки по категориям (если есть)
+            if hasattr(self, 'stage2_by_category'):
+                for cat, values in list(self.stage2_by_category.items()):
+                    self.stage2_by_category[cat] = [
+                        v for v in values if v["id"] != selected_id
+                    ]
+                    # Удаляем пустые категории
+                    if not self.stage2_by_category[cat]:
+                        del self.stage2_by_category[cat]
             
             # Очищаем текущие значения
             self.current_values = []
@@ -426,7 +450,7 @@ class ValueGame:
                 result.append(VALUE_BY_ID[value_id])
         return result
 
-# ========== ГЛУБОКИЙ ИИ-АНАЛИЗ ==========
+# ========== ГЛУБОКИЙ ИИ-АНАЛИЗ (остается без изменений) ==========
 async def generate_deep_analysis(values: List[Dict], goals: str, username: str) -> str:
     """Генерация глубокого ИИ-анализа с психологической глубиной"""
     
@@ -668,9 +692,10 @@ async def generate_local_analysis(values: List[Dict], goals: str, username: str,
     
     return analysis
 
-# ========== ИНИЦИАЛИЗАЦИЯ БОТА ==========
+# ========== БОТ И ДИСПЕТЧЕР ==========
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
+
 storage = SimpleStorage()
 active_games: Dict[int, ValueGame] = {}
 
@@ -685,7 +710,6 @@ def get_main_keyboard():
     )
 
 def get_stage1_keyboard():
-    """Клавиатура для Stage1 - цифры 1-5"""
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="1"), KeyboardButton(text="2"), KeyboardButton(text="3")],
@@ -696,11 +720,10 @@ def get_stage1_keyboard():
     )
 
 def get_stage2_keyboard():
-    """Клавиатура для Stage2 - цифры 1-4"""
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="1"), KeyboardButton(text="2")],
-            [KeyboardButton(text="3"), KeyboardButton(text="4")],
+            [KeyboardButton(text="A"), KeyboardButton(text="B")],
+            [KeyboardButton(text="C"), KeyboardButton(text="D")],
             [KeyboardButton(text="🔄 ПОВТОРИТЬ ВВОД"), KeyboardButton(text="🏁 ЗАВЕРШИТЬ ТЕСТ")]
         ],
         resize_keyboard=True
@@ -719,32 +742,43 @@ def get_goals_keyboard():
         resize_keyboard=True
     )
 
-# ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
-def split_message(text: str, max_length: int = 4000) -> List[str]:
-    """Разбивает сообщение на части по max_length символов"""
-    if len(text) <= max_length:
-        return [text]
+# ========== ОСНОВНЫЕ ОБРАБОТЧИКИ (остаются как в первом коде) ==========
+@dp.message(Command("start"))
+@dp.message(F.text == "🎮 НАЧАТЬ ТЕСТ")
+async def cmd_start(message: types.Message, state: FSMContext):
+    """Начало новой игры"""
+    user_id = message.from_user.id
+    username = message.from_user.full_name or "Игрок"
     
-    chunks = []
-    while text:
-        # Находим место для разрыва (последний перенос строки или пробел)
-        if len(text) <= max_length:
-            chunks.append(text)
-            break
-        
-        # Ищем место для разрыва
-        split_pos = text.rfind('\n', 0, max_length)
-        if split_pos == -1:
-            split_pos = text.rfind('. ', 0, max_length)
-            if split_pos == -1:
-                split_pos = text.rfind(' ', 0, max_length)
-                if split_pos == -1:
-                    split_pos = max_length
-        
-        chunks.append(text[:split_pos + 1].strip())
-        text = text[split_pos + 1:].strip()
+    # Очищаем старую игру
+    storage.delete_game(user_id)
+    if user_id in active_games:
+        del active_games[user_id]
     
-    return chunks
+    # Создаем новую игру
+    game = ValueGame(user_id, username, storage)
+    active_games[user_id] = game
+    
+    welcome = f"""
+🎯 <b>ЦЕННОСТНЫЙ НАВИГАТОР</b>
+
+👋 Привет, {username}!
+
+✨ <b>ТЕСТ ИЗ 2 ЭТАПОВ:</b>
+
+<b>Этап 1:</b> 40 выборов × 1 из 5 → 40 ценностей из 200
+<b>Этап 2:</b> 10 выборов × 1 из 4 → 10 главных ценностей
+
+🔍 <b>ГАРАНТИЯ:</b> Все 200+ ценностей будут показаны без повторов!
+
+🤖 <b>В КОНЦЕ:</b> Глубокий ИИ-анализ вашего психологического профиля с конкретными рекомендациями.
+
+🚀 <b>Начинаем 1 этап!</b>
+"""
+    
+    await message.answer(welcome, reply_markup=ReplyKeyboardRemove())
+    await state.set_state(GameStates.stage1_round)
+    await send_next_round(message, game, state)
 
 async def send_next_round(message: types.Message, game: ValueGame, state: FSMContext):
     """Отправляет следующий раунд"""
@@ -794,7 +828,7 @@ async def send_next_round(message: types.Message, game: ValueGame, state: FSMCon
             return
         
         text = f"""
-<b>🎯 ЭТАП 2: ВЫБЕРИТЕ 1 ИЗ {len(game.current_values)}</b>
+<b>🎯 ЭТАП 2: ВЫБЕРИТЕ 1 ИЗ 4</b>
 
 📊 <b>Прогресс:</b> {progress['current']}/{progress['target']} ({progress['percent']}%)
 🔄 <b>Раунд:</b> {progress['round']}
@@ -802,16 +836,14 @@ async def send_next_round(message: types.Message, game: ValueGame, state: FSMCon
 <b>Какая ценность важнее в этой категории?</b>
 """
         
-        # Используем цифры 1-4 вместо букв
-        for i, value in enumerate(game.current_values, 1):
-            text += f"\n{i}️⃣ <b>{value['name']}</b>"
+        letters = ['A', 'B', 'C', 'D']
+        for i, value in enumerate(game.current_values):
+            text += f"\n{letters[i]}. <b>{value['name']}</b>"
             if value.get('description'):
                 text += f"\n<em>{value['description']}</em>"
-            if value.get('category'):
-                text += f"\n🏷️ {value['category']}"
             text += "\n"
         
-        text += f"\n<b>Нажмите номер кнопки (1-{len(game.current_values)})</b>"
+        text += "\n<b>Нажмите букву кнопки (A-D)</b>"
         
         await message.answer(text, reply_markup=get_stage2_keyboard())
 
@@ -844,147 +876,6 @@ async def send_stage_transition(message: types.Message, game: ValueGame):
     
     await message.answer(transition_text, reply_markup=ReplyKeyboardRemove())
 
-async def ask_about_goals(message: types.Message, game: ValueGame, state: FSMContext):
-    """Спрашиваем о целях"""
-    
-    final_values = game.get_final_values()
-    
-    result_text = f"""
-🎉 <b>ТЕСТ ЗАВЕРШЕН, {game.username}!</b>
-
-🏆 <b>ВАШИ 10 ГЛАВНЫХ ЦЕННОСТЕЙ:</b>
-
-"""
-    
-    for i, value in enumerate(final_values, 1):
-        result_text += f"\n{i}. <b>{value['name']}</b>"
-        if value.get('description'):
-            result_text += f"\n   <em>{value['description']}</em>"
-        if value.get('category'):
-            result_text += f"\n   🏷️ {value['category']}"
-        result_text += "\n"
-    
-    # Статистика
-    result_text += f"""
-📊 <b>СТАТИСТИКА:</b>
-• Всего показано: {len(game.progress.stage1_shown_ids)} уникальных ценностей
-• Этап 1: выбрано 40 из 200
-• Этап 2: выбрано 10 главных
-• Раундов: {game.progress.round}
-• Время: {(datetime.now() - game.progress.start_time).seconds // 60} мин
-
-🎯 <b>Для персонализированного анализа:</b>
-"""
-    
-    await message.answer(result_text, reply_markup=ReplyKeyboardRemove())
-    await asyncio.sleep(2)
-    
-    # Спрашиваем о целях
-    goals_text = f"""
-🔍 <b>На какой сфере вы хотите сфокусироваться, {game.username}?</b>
-
-Выберите основную цель для развития:
-
-<em>Это поможет создать индивидуальные рекомендации.</em>
-"""
-    
-    await message.answer(goals_text, reply_markup=get_goals_keyboard())
-    await state.set_state(GameStates.asking_goals)
-
-async def generate_and_show_analysis(message: types.Message, game: ValueGame, state: FSMContext):
-    """Генерация и показ анализа"""
-    
-    await message.answer("🔮 <b>Готовлю ГЛУБОКИЙ ПСИХОЛОГИЧЕСКИЙ АНАЛИЗ...</b>\n\n<i>Это займет 20-30 секунд</i>", 
-                        reply_markup=ReplyKeyboardRemove())
-    
-    # Имитация процесса анализа с прогресс-баром
-    processing_msg = await message.answer("🔄 <i>Анализирую ваш профиль... 0%</i>")
-    
-    for percent in range(10, 101, 10):
-        await asyncio.sleep(2.5)  # 25 секунд всего
-        await processing_msg.edit_text(f"🔄 <i>Анализирую ваш профиль... {percent}%</i>")
-    
-    await processing_msg.delete()
-    
-    # Получаем финальные значения
-    final_values = game.get_final_values()
-    
-    # Генерация анализа
-    analysis = await generate_deep_analysis(
-        final_values, 
-        game.progress.user_goals,
-        game.username
-    )
-    
-    # Показываем анализ частями (Telegram ограничение 4096 символов)
-    chunks = split_message(analysis, 4000)
-    
-    for i, chunk in enumerate(chunks):
-        if i == 0:
-            await message.answer(chunk, reply_markup=ReplyKeyboardRemove())
-        else:
-            await message.answer(chunk)
-        await asyncio.sleep(1)
-    
-    # Заключительное сообщение
-    final_msg = f"""
-💎 <b>ВАШ ПСИХОЛОГИЧЕСКИЙ АНАЛИЗ ГОТОВ!</b>
-
-✨ <b>Что делать дальше:</b>
-1. <b>Сохраните этот анализ</b> - сделайте скриншоты или перешлите себе
-2. <b>Начните применять рекомендации</b> с сегодняшнего дня
-3. <b>Вернитесь к анализу через неделю</b> - проверьте прогресс
-4. <b>Поделитесь с близкими</b> - это поможет им лучше понять вас
-
-🔄 <b>Пройти тест еще раз через 3-6 месяцев:</b> 🎮 НАЧАТЬ ТЕСТ
-
-🌟 <b>Помните:</b> Ваши ценности - это живая система координат вашей личности. 
-Регулярно возвращайтесь к ним, развивайте их, и они приведут вас к подлинной реализации.
-"""
-    
-    await message.answer(final_msg, reply_markup=get_main_keyboard())
-    
-    # Очищаем состояние
-    await state.clear()
-
-# ========== ОСНОВНЫЕ ОБРАБОТЧИКИ ==========
-@dp.message(Command("start"))
-@dp.message(F.text == "🎮 НАЧАТЬ ТЕСТ")
-async def cmd_start(message: types.Message, state: FSMContext):
-    """Начало новой игры"""
-    user_id = message.from_user.id
-    username = message.from_user.full_name or "Игрок"
-    
-    # Очищаем старую игру
-    storage.delete_game(user_id)
-    if user_id in active_games:
-        del active_games[user_id]
-    
-    # Создаем новую игру
-    game = ValueGame(user_id, username, storage)
-    active_games[user_id] = game
-    
-    welcome = f"""
-🎯 <b>ЦЕННОСТНЫЙ НАВИГАТОР</b>
-
-👋 Привет, {username}!
-
-✨ <b>ТЕСТ ИЗ 2 ЭТАПОВ:</b>
-
-<b>Этап 1:</b> 40 выборов × 1 из 5 → 40 ценностей из 200
-<b>Этап 2:</b> 10 выборов × 1 из 4 → 10 главных ценностей
-
-🔍 <b>ГАРАНТИЯ:</b> Все 200+ ценностей будут показаны без повторов!
-
-🤖 <b>В КОНЦЕ:</b> Глубокий ИИ-анализ вашего психологического профиля с конкретными рекомендациями.
-
-🚀 <b>Начинаем 1 этап!</b>
-"""
-    
-    await message.answer(welcome, reply_markup=ReplyKeyboardRemove())
-    await state.set_state(GameStates.stage1_round)
-    await send_next_round(message, game, state)
-
 @dp.message(Command("continue"))
 async def cmd_continue(message: types.Message, state: FSMContext):
     """Продолжение после перехода"""
@@ -997,7 +888,7 @@ async def cmd_continue(message: types.Message, state: FSMContext):
     game = active_games[user_id]
     await send_next_round(message, game, state)
 
-# ========== ОБРАБОТКА ВЫБОРА ==========
+# ========== ОБРАБОТКА ВЫБОРА (остаются как в первом коде) ==========
 @dp.message(GameStates.stage1_round)
 async def handle_stage1_input(message: types.Message, state: FSMContext):
     """Обработка ввода на Stage1"""
@@ -1050,7 +941,7 @@ async def handle_stage2_input(message: types.Message, state: FSMContext):
         return
     
     game = active_games[user_id]
-    text = message.text.strip()
+    text = message.text.strip().upper()
     
     # Обработка специальных команд
     if text == "🔄 ПОВТОРИТЬ ВВОД":
@@ -1062,16 +953,17 @@ async def handle_stage2_input(message: types.Message, state: FSMContext):
         await state.clear()
         return
     
-    # Проверяем что это число от 1 до 4
-    if text not in ["1", "2", "3", "4"]:
-        await message.answer("❌ Нажмите кнопку 1-4", reply_markup=get_stage2_keyboard())
+    # Проверяем что это буква A-D
+    if text not in ["A", "B", "C", "D"]:
+        await message.answer("❌ Нажмите кнопку A-D", reply_markup=get_stage2_keyboard())
         return
     
-    choice_index = int(text) - 1
+    letter_to_index = {'A': 0, 'B': 1, 'C': 2, 'D': 3}
+    choice_index = letter_to_index[text]
     
     # Проверяем валидность выбора
     if choice_index >= len(game.current_values):
-        await message.answer(f"❌ Выберите число от 1 до {len(game.current_values)}", reply_markup=get_stage2_keyboard())
+        await message.answer(f"❌ Выберите букву до {chr(65 + len(game.current_values) - 1)}", reply_markup=get_stage2_keyboard())
         return
     
     # Обрабатываем выбор
@@ -1081,6 +973,54 @@ async def handle_stage2_input(message: types.Message, state: FSMContext):
         await send_next_round(message, game, state)
     else:
         await message.answer("❌ Ошибка обработки. Попробуйте еще раз.", reply_markup=get_stage2_keyboard())
+
+# ========== ЗАВЕРШЕНИЕ И АНАЛИЗ (остаются как в первом коде) ==========
+async def ask_about_goals(message: types.Message, game: ValueGame, state: FSMContext):
+    """Спрашиваем о целях"""
+    
+    final_values = game.get_final_values()
+    
+    result_text = f"""
+🎉 <b>ТЕСТ ЗАВЕРШЕН, {game.username}!</b>
+
+🏆 <b>ВАШИ 10 ГЛАВНЫХ ЦЕННОСТЕЙ:</b>
+
+"""
+    
+    for i, value in enumerate(final_values, 1):
+        result_text += f"\n{i}. <b>{value['name']}</b>"
+        if value.get('description'):
+            result_text += f"\n   <em>{value['description']}</em>"
+        if value.get('category'):
+            result_text += f"\n   🏷️ {value['category']}"
+        result_text += "\n"
+    
+    # Статистика
+    result_text += f"""
+📊 <b>СТАТИСТИКА:</b>
+• Всего показано: {len(game.progress.stage1_shown_ids)} уникальных ценностей
+• Этап 1: выбрано 40 из 200
+• Этап 2: выбрано 10 главных
+• Раундов: {game.progress.round}
+• Время: {(datetime.now() - game.progress.start_time).seconds // 60} мин
+
+🎯 <b>Для персонализированного анализа:</b>
+"""
+    
+    await message.answer(result_text, reply_markup=ReplyKeyboardRemove())
+    await asyncio.sleep(2)
+    
+    # Спрашиваем о целях
+    goals_text = f"""
+🔍 <b>На какой сфере вы хотите сфокусироваться, {game.username}?</b>
+
+Выберите основную цель для развития:
+
+<em>Это поможет создать индивидуальные рекомендации.</em>
+"""
+    
+    await message.answer(goals_text, reply_markup=get_goals_keyboard())
+    await state.set_state(GameStates.asking_goals)
 
 @dp.message(GameStates.asking_goals)
 async def handle_goals_input(message: types.Message, state: FSMContext):
@@ -1098,6 +1038,88 @@ async def handle_goals_input(message: types.Message, state: FSMContext):
     await state.set_state(GameStates.generating_analysis)
     await generate_and_show_analysis(message, game, state)
 
+async def generate_and_show_analysis(message: types.Message, game: ValueGame, state: FSMContext):
+    """Генерация и показ анализа"""
+    
+    await message.answer("🔮 <b>Готовлю ГЛУБОКИЙ ПСИХОЛОГИЧЕСКИЙ АНАЛИЗ...</b>\n\n<i>Это займет 20-30 секунд</i>", 
+                        reply_markup=ReplyKeyboardRemove())
+    
+    # Имитация процесса анализа с прогресс-баром
+    processing_msg = await message.answer("🔄 <i>Анализирую ваш профиль... 0%</i>")
+    
+    for percent in range(10, 101, 10):
+        await asyncio.sleep(2.5)  # 25 секунд всего
+        await processing_msg.edit_text(f"🔄 <i>Анализирую ваш профиль... {percent}%</i>")
+    
+    await processing_msg.delete()
+    
+    # Получаем финальные значения
+    final_values = game.get_final_values()
+    
+    # Генерируем анализ
+    analysis = await generate_deep_analysis(
+        final_values, 
+        game.progress.user_goals,
+        game.username
+    )
+    
+    # Показываем анализ частями (Telegram ограничение 4096 символов)
+    chunks = split_message(analysis, 4000)
+    
+    for i, chunk in enumerate(chunks):
+        if i == 0:
+            await message.answer(chunk, reply_markup=ReplyKeyboardRemove())
+        else:
+            await message.answer(chunk)
+        await asyncio.sleep(1)
+    
+    # Заключительное сообщение
+    final_msg = f"""
+💎 <b>ВАШ ПСИХОЛОГИЧЕСКИЙ АНАЛИЗ ГОТОВ!</b>
+
+✨ <b>Что делать дальше:</b>
+1. <b>Сохраните этот анализ</b> - сделайте скриншоты или перешлите себе
+2. <b>Начните применять рекомендации</b> с сегодняшнего дня
+3. <b>Вернитесь к анализу через неделю</b> - проверьте прогресс
+4. <b>Поделитесь с близкими</b> - это поможет им лучше понять вас
+
+🔄 <b>Пройти тест еще раз через 3-6 месяцев:</b> 🎮 НАЧАТЬ ТЕСТ
+
+🌟 <b>Помните:</b> Ваши ценности - это живая система координат вашей личности. 
+Регулярно возвращайтесь к ним, развивайте их, и они приведут вас к подлинной реализации.
+"""
+    
+    await message.answer(final_msg, reply_markup=get_main_keyboard())
+    
+    # Очищаем состояние
+    await state.clear()
+
+def split_message(text: str, max_length: int = 4000) -> List[str]:
+    """Разбивает сообщение на части по max_length символов"""
+    if len(text) <= max_length:
+        return [text]
+    
+    chunks = []
+    while text:
+        # Находим место для разрыва (последний перенос строки или пробел)
+        if len(text) <= max_length:
+            chunks.append(text)
+            break
+        
+        # Ищем место для разрыва
+        split_pos = text.rfind('\n', 0, max_length)
+        if split_pos == -1:
+            split_pos = text.rfind('. ', 0, max_length)
+            if split_pos == -1:
+                split_pos = text.rfind(' ', 0, max_length)
+                if split_pos == -1:
+                    split_pos = max_length
+        
+        chunks.append(text[:split_pos + 1].strip())
+        text = text[split_pos + 1:].strip()
+    
+    return chunks
+
 # ========== ВСПОМОГАТЕЛЬНЫЕ ОБРАБОТЧИКИ ==========
 @dp.message(Command("help"))
 @dp.message(F.text == "❓ ПОМОЩЬ")
@@ -1112,7 +1134,7 @@ async def cmd_help(message: types.Message):
 4. Получите глубокий ИИ-анализ 10 главных ценностей
 
 <b>Кнопки во время теста:</b>
-1-5 / 1-4 - выбор ценности
+1-5 / A-D - выбор ценности
 🔄 ПОВТОРИТЬ ВВОД - показать текущий выбор снова
 🏁 ЗАВЕРШИТЬ ТЕСТ - прервать тест и начать заново
 
@@ -1181,7 +1203,7 @@ async def main():
         logger.info(f"✅ Бот @{bot_info.username} запущен!")
         logger.info(f"✅ {len(ALL_VALUES)} ценностей для теста")
         logger.info("✅ ИСПРАВЛЕННАЯ логика: гарантия показа ВСЕХ ценностей")
-        logger.info("✅ Stage2 работает корректно с группировкой по категориям")
+        logger.info("✅ Stage2 РАБОТАЕТ корректно с группировкой по категориям")
         logger.info("✅ Глубокий ИИ-анализ с психологической глубиной")
         logger.info("✅ Используйте 🎮 НАЧАТЬ ТЕСТ")
         
